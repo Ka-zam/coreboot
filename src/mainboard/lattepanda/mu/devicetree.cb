@@ -111,7 +111,7 @@ chip soc/intel/alderlake
 				.PcieRpL1Substates = L1_SS_DISABLED,
 			}"
 			chip drivers/net
-				# register "wake" = "no link"
+				register "wake" = "GPE0_PCI_EXP"
 				register "device_index" = "0"
 				register "add_acpi_dma_property" = "true"
 				device pci 00.0 on end

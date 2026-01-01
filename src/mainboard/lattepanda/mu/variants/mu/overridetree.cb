@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+chip soc/intel/alderlake
+	# Base LattePanda Mu configuration with Lite carrier board
+	# No overrides needed - uses base devicetree.cb as-is
+	device domain 0 on
+	end
+end

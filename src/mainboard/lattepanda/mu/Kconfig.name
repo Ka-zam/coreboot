@@ -1,6 +1,12 @@
 ## SPDX-License-Identifier: GPL-2.0-only
 
 config BOARD_LATTEPANDA_MU
-	bool "LattePanda Mu"
+	bool "Mu (LattePanda Lite Carrier)"
 	help
-	  LattePanda Mu with lite carrier board.
+	  LattePanda Mu with official Lite carrier board.
+
+config BOARD_LATTEPANDA_VALKRA
+	bool "Valkra (Custom Carrier Board)"
+	help
+	  LattePanda Mu with custom Valkra carrier board for industrial
+	  data acquisition with FPGA and redundant NVMe storage.

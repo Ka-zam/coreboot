@@ -1,0 +1,175 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+# Valkra Variant - Industrial Data Acquisition System with N305
+#
+# Target Platform: LattePanda Mu with Intel Core i3-N305 (8-core, 15W)
+# Application: Remote industrial data acquisition with FPGA-based 8-channel ADC
+#
+# PCIe Configuration (requires Flash Descriptor soft strap configuration):
+#   Controller 1 (HSIO 0-3): 2x2 bifurcation mode
+#     - RP1: PCIe Gen3 x2 → NVMe Drive 1 (~1.8 GB/s)
+#     - RP3: PCIe Gen3 x2 → NVMe Drive 2 (~1.8 GB/s)
+#   Controller 2 (HSIO 6): x1 mode
+#     - RP7: PCIe Gen3 x1 → Realtek GbE (inherited from base)
+#   Controller 3 (HSIO 8-11): 1x4 bifurcation mode
+#     - RP9: PCIe Gen3 x4 → Kintex-7 FPGA (~3.6 GB/s for 225 MSPS ADC)
+#
+# Storage Configuration:
+#   - eMMC 5.1 HS400: Primary boot device (~400 MB/s, inherited from base)
+#   - 2× NVMe Gen3 x2: Data storage with mdadm RAID 1 for redundancy
+#
+# Network:
+#   - 1× Gigabit Ethernet (Realtek RTL8111H, inherited from base)
+#
+# USB Configuration:
+#   - 2× USB 2.0 ports: JTAG programming + console access (no HSIO lanes used)
+#   - USB 3.x disabled to save HSIO lanes for PCIe
+#
+# Total PCIe Root Ports: 4 (RP1, RP3, RP7, RP9) - within ADL-N 5-port limit
+# Total HSIO Lane Usage: 9/9 lanes fully utilized
+#
+# IMPORTANT: Flash Descriptor Soft Strap Requirements
+# ======================================================
+# Before first boot, the Intel Flash Descriptor must be configured with:
+#   Controller 1: "2x2" bifurcation (RP1 x2, RP3 x2)
+#   Controller 3: "1x4" bifurcation (RP9 x4)
+#
+# Use ifdtool to configure soft straps:
+#   cd util/ifdtool
+#   make
+#   ./ifdtool -d your_flash_image.bin  # Dump current settings
+#   # Modify soft straps using Intel FIT or custom ifdtool patches
+#   # Flash descriptor soft straps are platform-specific
+#
+# Without correct bifurcation straps, devices will not enumerate properly!
+# See PCIE_CONFIGURATION_GUIDE.md for detailed bifurcation information.
+
+chip soc/intel/alderlake
+	device domain 0 on
+		# =================================================================
+		# NVMe Storage (2× Gen3 x2 drives for RAID redundancy)
+		# Controller 1 (HSIO 0-3) in "2x2" bifurcation mode
+		# =================================================================
+
+		# RP1 - NVMe Drive 1 (Primary data storage, Gen3 x2)
+		# HSIO Lanes: 0-1 from Controller 1
+		# Bandwidth: ~1.8 GB/s (900 MB/s per lane × 2)
+		device ref pcie_rp1 on
+			register "pcie_clk_config_flag[0]" = "PCIE_CLK_FREE_RUNNING"
+			register "pch_pcie_rp[PCH_RP(1)]" = "{
+				.flags = PCIE_RP_LTR | PCIE_RP_AER | PCIE_RP_CLK_SRC_UNUSED | PCIE_RP_CLK_REQ_UNUSED,
+				.pcie_rp_aspm = ASPM_L0S_L1,
+				.PcieRpL1Substates = L1_SS_L1_2,
+			}"
+			smbios_slot_desc	"SlotTypeM2Socket3" "SlotLengthOther"
+						"M.2 NVMe Primary" "SlotDataBusWidth2X"
+		end
+
+		# RP3 - NVMe Drive 2 (Secondary data storage, Gen3 x2)
+		# HSIO Lanes: 2-3 from Controller 1
+		# Bandwidth: ~1.8 GB/s (900 MB/s per lane × 2)
+		# Recommended: mdadm RAID 1 with Drive 1 for redundancy
+		device ref pcie_rp3 on
+			register "pcie_clk_config_flag[1]" = "PCIE_CLK_FREE_RUNNING"
+			register "pch_pcie_rp[PCH_RP(3)]" = "{
+				.flags = PCIE_RP_LTR | PCIE_RP_AER | PCIE_RP_CLK_SRC_UNUSED | PCIE_RP_CLK_REQ_UNUSED,
+				.pcie_rp_aspm = ASPM_L0S_L1,
+				.PcieRpL1Substates = L1_SS_L1_2,
+			}"
+			smbios_slot_desc	"SlotTypeM2Socket3" "SlotLengthOther"
+						"M.2 NVMe Secondary" "SlotDataBusWidth2X"
+		end
+
+		# =================================================================
+		# FPGA Data Acquisition System (Gen3 x4 single endpoint)
+		# Controller 3 (HSIO 8-11) in "1x4" bifurcation mode
+		# =================================================================
+
+		# RP9 - Kintex-7 FPGA with 8-channel 16-bit ADC (Gen3 x4)
+		# HSIO Lanes: 8-11 from Controller 3
+		# Bandwidth: ~3.6 GB/s (900 MB/s per lane × 4)
+		# Application: 8-channel ADC streaming at up to 225 MSPS
+		# Data Format: 8 channels × 16-bit samples = 3.6 GB/s @ 225 MSPS
+		device ref pcie_rp9 on
+			register "pcie_clk_config_flag[2]" = "PCIE_CLK_FREE_RUNNING"
+			register "pch_pcie_rp[PCH_RP(9)]" = "{
+				.flags = PCIE_RP_LTR | PCIE_RP_AER | PCIE_RP_CLK_SRC_UNUSED | PCIE_RP_CLK_REQ_UNUSED | PCIE_RP_BUILT_IN,
+				.pcie_rp_aspm = ASPM_DISABLE,
+				.PcieRpL1Substates = L1_SS_DISABLED,
+				.pcie_rp_detect_timeout_ms = 100,
+			}"
+			smbios_slot_desc	"SlotTypePciExpressGen3X4" "SlotLengthOther"
+						"FPGA ADC" "SlotDataBusWidth4X"
+		end
+
+		# =================================================================
+		# Disabled PCIe Ports
+		# =================================================================
+		# RP2, RP4-RP8, RP10-RP12 are disabled to stay within 5-port limit
+		# and because all 9 HSIO lanes are allocated
+
+		device ref pcie_rp4 off end  # WiFi slot not needed (remote industrial)
+
+		# Note: RP7 (Ethernet) is enabled in base devicetree.cb and inherited
+
+		# =================================================================
+		# USB Configuration
+		# =================================================================
+		# USB 2.0 ports only (USB 3.x disabled to save HSIO lanes)
+		# Sufficient for JTAG programming and console access
+
+		# USB 2.0: Port 0 = JTAG programming, Port 1 = Console/diagnostics
+		register "usb2_ports" = "{
+			[0] = USB2_PORT_MID(OC_SKIP),
+			[1] = USB2_PORT_MID(OC_SKIP),
+		}"
+
+		# Disable all USB 3.x SuperSpeed ports (saves HSIO lanes 0-3 for PCIe)
+		register "usb3_ports" = "{}"
+
+		# =================================================================
+		# Configuration Notes
+		# =================================================================
+		#
+		# Bifurcation Mode Requirements:
+		#   Controller 1 must be set to "2x2" mode in flash descriptor
+		#   Controller 3 must be set to "1x4" mode in flash descriptor
+		#   These settings cannot be changed via FSP UPD at runtime!
+		#
+		# FPGA Configuration:
+		#   - PcieRpDetectTimeoutMs = 100: FPGA may take longer to initialize
+		#   - BUILT_IN flag: Marks as onboard device, not hot-pluggable
+		#   - ASPM disabled: Maximum throughput, no power management delays
+		#   - L1 substates disabled: Prevents link power state transitions
+		#   - Gen3 capable: Will auto-negotiate to Gen2 if FPGA only supports it
+		#
+		# NVMe RAID Configuration:
+		#   - 2× Gen3 x2 NVMe = ~3.6 GB/s combined bandwidth
+		#   - Recommended: mdadm RAID 1 for redundancy
+		#     mdadm --create /dev/md0 --level=1 --raid-devices=2 /dev/nvme0n1 /dev/nvme1n1
+		#   - RAID 1: Mirrored writes, ~1.8 GB/s effective write bandwidth
+		#   - Single drive failure tolerance for industrial reliability
+		#
+		# Boot Configuration:
+		#   - Primary: eMMC 5.1 HS400 (~400 MB/s, soldered on SoM)
+		#   - Failover: Either NVMe drive can serve as secondary boot device
+		#
+		# Power Savings:
+		#   - NVMe drives use ASPM L0s/L1 and L1 substates for idle power reduction
+		#   - USB 3.x disabled saves ~1W when not in use
+		#   - WiFi module disabled (RP4 off)
+		#
+		# Performance at Maximum Sample Rate (225 MSPS):
+		#   - FPGA → Host: 3.6 GB/s (PCIe Gen3 x4)
+		#   - Host → Storage: 1.8 GB/s (RAID 1 mirrored write)
+		#   - Continuous recording duration limited by NVMe capacity
+		#   - Example: 1TB NVMe = ~9 minutes at full 225 MSPS
+		#
+		# Industrial Remote Deployment:
+		#   - Ethernet only connectivity (no WiFi/cellular)
+		#   - USB 2.0 sufficient for field programming and diagnostics
+		#   - Redundant storage for data integrity
+		#   - No user-accessible slots (all devices built-in)
+		# =================================================================
+	end
+end

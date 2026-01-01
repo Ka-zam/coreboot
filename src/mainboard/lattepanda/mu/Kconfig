@@ -1,6 +1,6 @@
 ## SPDX-License-Identifier: GPL-2.0-only
 
-if BOARD_LATTEPANDA_MU
+if BOARD_LATTEPANDA_MU || BOARD_LATTEPANDA_VALKRA
 
 config BOARD_SPECIFIC_OPTIONS
 	def_bool y
@@ -29,8 +29,19 @@ config FMDFILE
 config MAINBOARD_DIR
 	default "lattepanda/mu"
 
+config VARIANT_DIR
+	default "mu" if BOARD_LATTEPANDA_MU
+	default "valkra" if BOARD_LATTEPANDA_VALKRA
+
 config MAINBOARD_PART_NUMBER
-	default "MU_8G"
+	default "Mu_8G" if BOARD_LATTEPANDA_MU
+	default "Valkra" if BOARD_LATTEPANDA_VALKRA
+
+config DEVICETREE
+	default "variants/\$(CONFIG_VARIANT_DIR)/overridetree.cb"
+
+config OVERRIDE_DEVICETREE
+	default "variants/\$(CONFIG_VARIANT_DIR)/overridetree.cb"
 
 config UART_FOR_CONSOLE
 	default 0
